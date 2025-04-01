@@ -16,13 +16,14 @@
     "dayjs": "^1.11.10",
     "echarts": "^5.4.3",
     "element-plus": "^2.4.3",
-    "vue": "^3.3.9"
+    "vue": "^3.3.9",
+    "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.3.3",
     "@tsconfig/node18": "^18.2.2",
-    "@types/node": "^20.10.3",
-    "@vitejs/plugin-vue": "^4.5.1",
+    "@types/node": "^20.17.27",
+    "@vitejs/plugin-vue": "^4.6.2",
     "@vue/eslint-config-prettier": "^8.0.0",
     "@vue/eslint-config-typescript": "^12.0.0",
     "@vue/tsconfig": "^0.4.0",

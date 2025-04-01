@@ -45,6 +45,7 @@ import dayjs from 'dayjs'
 import { getStockDailyData } from '@/api/stock'
 import { ElMessage } from 'element-plus'
 import type { StockQueryParams } from '@/types/stock'
+import { useRoute } from 'vue-router'
 
 const chartRef = ref<HTMLElement>()
 const loading = ref(false)
@@ -71,9 +72,29 @@ const initChart = () => {
 const updateChart = (data: any[]) => {
   if (!chart) return
   
+  // 添加更详细的数据日志
   console.log('图表数据处理:', {
     dates: data.map(item => item.date),
-    values: data.map(item => [item.open, item.close, item.low, item.high])
+    values: data.map(item => [item.open, item.high, item.low, item.close]),
+    rawData: data[0]
+  })
+  
+  // 创建一个映射，用于在 tooltip 中查找正确的数据
+  const dataMap = new Map()
+  data.forEach(item => {
+    dataMap.set(item.date, item)
+  })
+  
+  const chartData = data.map(item => {
+    const open = parseFloat(item.open)
+    const close = parseFloat(item.close)
+    const high = parseFloat(item.high)
+    const low = parseFloat(item.low)
+    
+    console.log(`日期: ${item.date}, 开盘: ${open}, 收盘: ${close}, 涨跌: ${close > open ? '上涨' : '下跌'}`)
+    
+    // 修改数据顺序为 ECharts 期望的格式：[开盘价, 收盘价, 最低价, 最高价]
+    return [open, close, low, high]
   })
   
   const option = {
@@ -86,18 +107,29 @@ const updateChart = (data: any[]) => {
       axisPointer: { type: 'cross' },
       formatter: (params: any) => {
         const item = params[0]
-        const data = item.data
-        const color = data[1] >= data[0] ? '#f56c6c' : '#67c23a'
-        return `
-          日期：${item.axisValue}<br/>
-          <span style="color:${color}">
-          开盘价：${data[0].toFixed(2)}<br/>
-          收盘价：${data[1].toFixed(2)}<br/>
-          最低价：${data[2].toFixed(2)}<br/>
-          最高价：${data[3].toFixed(2)}<br/>
-          涨跌：${((data[1] - data[0]) / data[0] * 100).toFixed(2)}%
-          </span>
-        `
+        const date = item.axisValue
+        const stockData = dataMap.get(date)
+        
+        if (stockData) {
+          const open = parseFloat(stockData.open)
+          const high = parseFloat(stockData.high)
+          const low = parseFloat(stockData.low)
+          const close = parseFloat(stockData.close)
+          const color = close >= open ? '#f56c6c' : '#67c23a'
+          
+          return `
+            日期：${date}<br/>
+            <span style="color:${color}">
+            开盘价：${open.toFixed(2)}<br/>
+            最高价：${high.toFixed(2)}<br/>
+            最低价：${low.toFixed(2)}<br/>
+            收盘价：${close.toFixed(2)}<br/>
+            涨跌：${((close - open) / open * 100).toFixed(2)}%
+            </span>
+          `
+        }
+        
+        return '数据加载中...'
       }
     },
     grid: {
@@ -127,15 +159,11 @@ const updateChart = (data: any[]) => {
     series: [{
       name: '股价区间',
       type: 'candlestick',
-      data: data.map(item => [
-        item.open,   // 开盘价
-        item.close,  // 收盘价
-        item.low,    // 最低价
-        item.high    // 最高价
-      ]),
+      data: chartData,
       itemStyle: {
-        color: '#f56c6c',     // 上涨颜色
-        color0: '#67c23a',    // 下跌颜色
+        // 修改颜色设置：红色表示上涨，绿色表示下跌
+        color: '#f56c6c',     // 上涨颜色（红色）
+        color0: '#67c23a',    // 下跌颜色（绿色）
         borderColor: '#f56c6c',     // 上涨边框颜色
         borderColor0: '#67c23a'     // 下跌边框颜色
       }
@@ -152,25 +180,46 @@ const handleQuery = async () => {
   }
   
   const fullStockCode = `${stockCode.value}.${exchange.value}`
+  console.log('开始查询数据:', { fullStockCode, dateRange: dateRange.value })
+  
   loading.value = true
   try {
-    const data = await getStockDailyData({
+    const response = await getStockDailyData({
       code: fullStockCode,
       startDate: dateRange.value[0],
       endDate: dateRange.value[1]
     })
-    console.log('获取到的数据:', data)  // 添加数据日志
+    
+    console.log('API返回原始数据:', response)
+    const data = response.data || response  // 兼容两种可能的数据结构
+    
+    if (!data || !Array.isArray(data)) {
+      console.error('数据格式错误:', { response, data })
+      throw new Error('返回的数据格式不正确')
+    }
+    
+    console.log('开始处理图表数据...')
     updateChart(data)
   } catch (error: any) {
     console.error('获取数据失败:', error)
-    ElMessage.error(`获取数据失败: ${error.response?.data?.detail || error.message}`)
+    ElMessage.error(`获取数据失败: ${error.message}`)
   } finally {
     loading.value = false
   }
 }
 
+const route = useRoute()
+
+// 从 URL 参数中获取初始值
+stockCode.value = route.query.code?.toString() || ''
+exchange.value = route.query.exchange?.toString() || 'XSHG'
+
 onMounted(() => {
   initChart()
+  // 如果有初始参数，自动查询
+  if (stockCode.value && exchange.value) {
+    handleQuery()
+  }
 })
 
 onUnmounted(() => {
